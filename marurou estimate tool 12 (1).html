@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -692,6 +693,7 @@
 <header class="topbar">
   <div class="logo">まるっと漏水</div>
   <span class="tag">見積作成</span>
+  <span class="tag" id="app-version" style="opacity:.65;" title="ツールのバージョン。不具合報告時はこの番号をお知らせください">ver 2026.07.04</span>
   <div class="spacer"></div>
   <button onclick="UI.openProjectFile()" title="保存済みJSONファイルから見積を復元">📤 開く</button>
   <button onclick="UI.saveProjectFile()" title="現在の見積をJSONファイルとして一時保存（後で「📤 開く」で再開できます）">💾 一時保存</button>
@@ -1862,6 +1864,14 @@ const UI = {
       try {
         const snapshot = JSON.parse(e.target.result);
         if (!snapshot || typeof snapshot !== 'object') throw new Error('不正な形式');
+        // 請求書JSON（type:invoice）の場合はタブ③へ取り込む
+        if (snapshot.type === 'invoice') {
+          if (State.dirty && !confirm('現在の編集内容が失われます。読み込みを続行しますか？')) return;
+          this.switchTab('C');
+          this.C_loadInvoiceSnapshot(snapshot);
+          showToast(`「${file.name}」を請求書発行に読み込みました`);
+          return;
+        }
         if (!snapshot.A && !snapshot.B) throw new Error('見積データが見つかりません');
         if (State.dirty && !confirm('現在の編集内容が失われます。読み込みを続行しますか？')) return;
         // Restore state
@@ -1892,14 +1902,24 @@ const UI = {
         const sync = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
         sync('A-proj-title', State.A.project.title);
         sync('A-proj-client', State.A.project.client);
+        sync('A-proj-honorific', State.A.project.honorific || '御中');
         sync('A-proj-date', State.A.project.date);
         sync('A-proj-period', State.A.project.period);
         sync('A-proj-validuntil', State.A.project.validUntil);
         sync('A-proj-staff', State.A.project.staff);
         sync('A-proj-overhead', String(State.A.project.overhead ?? 0.10));
         sync('A-proj-tax', String(State.A.project.tax ?? 0.10));
+        sync('A-proj-roundmode', State.A.project.roundMode || 'auto');
         sync('A-proj-notes', State.A.project.notes);
         sync('A-mult-input', (State.A.globalMult || 1.20).toFixed(2));
+
+        // タブ①: 明細があればビルドゾーンを表示（取込画面を隠す）
+        if (State.A.rows.length > 0) {
+          const bz = document.getElementById('A-build-zone');
+          const iz = document.getElementById('A-import-zone');
+          if (bz) bz.style.display = 'block';
+          if (iz) iz.style.display = 'none';
+        }
 
         // Re-render both tabs
         this.A_render();
@@ -3817,6 +3837,12 @@ const UI = {
       try {
         const text = await file.text();
         const snap = JSON.parse(text);
+        // 請求書JSON（type:invoice）を取り込んだ場合は、請求書まるごと復元
+        if (snap.type === 'invoice') {
+          this.C_loadInvoiceSnapshot(snap);
+          this.C_status(`✓ 請求書「${file.name}」を読み込みました`, 'ok');
+          return;
+        }
         const quote = this.C_snapshotToQuote(snap, file.name);
         if (!quote) { this.C_status(`「${file.name}」から明細を読み取れませんでした`, 'err'); continue; }
         // Warn if client differs from the first quote
@@ -3842,6 +3868,44 @@ const UI = {
       if (warned) msg += '（※宛名が異なる見積が含まれています。先頭の宛名を採用しています）';
       this.C_status('✓ ' + msg, warned ? 'warn' : 'ok');
     }
+  },
+
+  // 請求書JSON（type:invoice）を丸ごと復元してフォームに反映
+  C_loadInvoiceSnapshot(snap) {
+    const inv = snap.invoice || {};
+    State.C.quotes = Array.isArray(snap.quotes)
+      ? snap.quotes.map(q => ({ ...q, sections: (q.sections || []).map(s => ({ ...s, items: (s.items || []).map(it => ({ ...it })) })) }))
+      : [];
+    State.C.invoice = {
+      client: inv.client || '',
+      honorific: inv.honorific != null ? inv.honorific : '御中',
+      staff: inv.staff || '',
+      title: inv.title || '',
+      date: inv.date || todayISO(),
+      dueDate: inv.dueDate || endOfNextMonthISO(todayISO()),
+      tax: inv.tax != null ? inv.tax : 0.10,
+      notes: inv.notes || '',
+      detailMode: inv.detailMode || 'full',
+      _honorificSet: true,
+    };
+    // Reflect into the form
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set('C-inv-client', State.C.invoice.client);
+    set('C-inv-honorific', State.C.invoice.honorific);
+    set('C-inv-staff', State.C.invoice.staff);
+    set('C-inv-title', State.C.invoice.title);
+    set('C-inv-date', State.C.invoice.date);
+    set('C-inv-duedate', State.C.invoice.dueDate);
+    set('C-inv-tax', String(State.C.invoice.tax));
+    set('C-inv-notes', State.C.invoice.notes);
+    // detail mode radios
+    const dm = State.C.invoice.detailMode;
+    document.querySelectorAll('input[name="C-detail-mode"]').forEach(r => { r.checked = (r.value === dm); });
+    // Show UI
+    document.getElementById('C-quote-list-wrap').style.display = 'block';
+    document.getElementById('C-settings-card').style.display = 'block';
+    this.C_renderQuoteList();
+    this.C_refreshTotals();
   },
 
   // Convert a saved snapshot {A,B,currentTab} into a normalized quote object
@@ -4084,28 +4148,15 @@ const UI = {
     let rowsHtml = '';
     let no = 0;
     if (inv.detailMode === 'summary') {
-      // 集約形式: per-quote → per-section summary line (+ overhead/adjust)
+      // 集約形式: 見積ごとに1行（件名 + 税抜価格。諸経費・端数調整は反映済み）
       quotes.forEach((q, qi) => {
-        if (multi) {
-          rowsHtml += `<tr class="qb-inv-group"><td colspan="4">■見積${qi + 1}: ${esc(q.title || q.filename || '無題')}</td></tr>`;
-        }
-        q.sections.forEach(s => {
-          const secTotal = s.items.filter(it => !it.isHeading).reduce((a, it) => a + Math.round(it.qty * it.sellUnit), 0);
-          if (secTotal === 0 && !s.name) return;
-          no++;
-          rowsHtml += `<tr>
-            <td>${esc(s.name || q.title || '工事一式')}</td>
-            <td class="qb-num">1 式</td>
-            <td class="qb-num">${secTotal.toLocaleString()}</td>
-            <td class="qb-num">${secTotal.toLocaleString()}</td>
-          </tr>`;
-        });
-        if (q.overhead > 0) {
-          rowsHtml += `<tr><td>諸経費</td><td class="qb-num">1 式</td><td class="qb-num">${q.overhead.toLocaleString()}</td><td class="qb-num">${q.overhead.toLocaleString()}</td></tr>`;
-        }
-        if (q.roundAdjust !== 0) {
-          rowsHtml += `<tr><td>端数調整</td><td class="qb-num">1 式</td><td class="qb-num">${q.roundAdjust.toLocaleString()}</td><td class="qb-num">${q.roundAdjust.toLocaleString()}</td></tr>`;
-        }
+        // q.net は諸経費・端数調整を反映した税抜額
+        rowsHtml += `<tr>
+          <td>${esc(q.title || q.filename || '工事一式')}</td>
+          <td class="qb-num">1 式</td>
+          <td class="qb-num">${q.net.toLocaleString()}</td>
+          <td class="qb-num">${q.net.toLocaleString()}</td>
+        </tr>`;
       });
     } else {
       // 明細形式: all items, headings as sub-rows
