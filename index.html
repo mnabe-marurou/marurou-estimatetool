@@ -320,6 +320,13 @@
   table.quote-list tr:last-child td { border-bottom: none; }
   .qtag { display: inline-block; background: var(--ink); color: var(--bg); border-radius: 4px; padding: 1px 5px; font-size: 11px; margin-right: 4px; }
 
+  .import-files-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: var(--chip); border-bottom: 1px solid var(--line); transition: outline .1s; }
+  .import-files-bar.drag { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  .import-files-bar .file-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line-2); padding: 4px 8px; font-size: 11px; }
+  .import-files-bar .file-chip .del { cursor: pointer; color: var(--accent); font-weight: 700; padding: 0 2px; }
+  .import-files-bar .file-chip .del:hover { text-decoration: underline; }
+  .import-files-bar .add-file-btn { margin-left: auto; }
+  .row-act-btn.kind-toggle { font-size: 9px; }
   .mult-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--ink); color: var(--bg); margin-bottom: 0; flex-wrap: wrap; border-left: 4px solid var(--warn); }
   .mult-bar .label { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; opacity: .9; color: var(--warn); font-weight: 700; }
   .mult-bar .mult-input { width: 90px; padding: 6px 10px; border: 2px solid var(--warn); background: #fff8d6; color: var(--ink); font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; text-align: right; }
@@ -703,10 +710,10 @@
 
 <nav class="tabs" id="tabs">
   <div class="tab" data-tab="A" onclick="UI.switchTab('A')">
-    <span class="num">①</span> 業者見積から作成
+    <span class="num">①</span> 実費見積
   </div>
   <div class="tab" data-tab="B" onclick="UI.switchTab('B')">
-    <span class="num">②</span> 単価表から作成
+    <span class="num">②</span> 概算復旧見積
   </div>
   <div class="tab" data-tab="C" onclick="UI.switchTab('C')">
     <span class="num">③</span> 請求書発行
@@ -718,8 +725,8 @@
   <div class="page-header">
     <div>
       <div class="mono xs muted">MODE A · VENDOR IMPORT</div>
-      <h1 class="page-title">業者見積から作成 <small>// IMPORT</small></h1>
-      <div class="page-sub">業者からもらったPDF見積（またはExcel）を取り込み、係数（×掛け）を指定すると自社の見積価格が一発計算されます。最終的に行ごとに微調整して仕上げてください。</div>
+      <h1 class="page-title">実費見積 <small>// IMPORT</small></h1>
+      <div class="page-sub">業者からもらったPDF見積（またはExcel）を取り込み、係数（×掛け）を指定すると自社の見積価格が一発計算されます。<br>最終的に行ごとに微調整して仕上げてください。</div>
     </div>
   </div>
 
@@ -733,8 +740,8 @@
       <div class="dropzone" id="A-dropzone">
         <span class="big">📥</span>
         <strong>クリックでファイルを選択</strong> or ここにドラッグ&ドロップ<br>
-        <span class="hint">対応: PDF (.pdf) / Excel (.xlsx, .xls) / CSV (.csv)</span>
-        <input type="file" id="A-file" accept=".pdf,.xlsx,.xls,.csv">
+        <span class="hint">対応: PDF (.pdf) / Excel (.xlsx, .xls) / CSV (.csv) — 複数ファイルまとめて選択できます</span>
+        <input type="file" id="A-file" accept=".pdf,.xlsx,.xls,.csv" multiple>
       </div>
       <div id="A-import-status" style="display:none;" class="import-status"></div>
       <div style="margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
@@ -831,6 +838,8 @@
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden;">
+      <div class="import-files-bar" id="A-import-files-bar"></div>
+      <input type="file" id="A-file-add" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none;">
       <div class="mult-bar">
         <span class="label">一括係数 ×</span>
         <input type="number" class="mult-input" id="A-mult-input" value="1.20" step="0.01" min="0">
@@ -859,8 +868,9 @@
         </table>
       </div>
       <div class="add-row">
-        <button class="btn sm" onclick="UI.A_addRow()">＋ 行を追加</button>
-        <span class="muted xs">— 自動抽出されなかった項目も手動で追加できます</span>
+        <button class="btn sm" onclick="UI.A_addRow()">＋ 明細行を追加</button>
+        <button class="btn sm" onclick="UI.A_addHeadingRow()">＋ 見出し行を追加</button>
+        <span class="muted xs">— 見出し行は金額を持たず、複数見積をまとめる際の区切りに使えます</span>
       </div>
     </div>
   </div>
@@ -871,8 +881,8 @@
   <div class="page-header">
     <div>
       <div class="mono xs muted">MODE B · PRICE BOOK</div>
-      <h1 class="page-title">単価表から作成 <small>// BUILD</small></h1>
-      <div class="page-sub">被害部屋を選んでセクションを作り、各セクションに単価表から品目を追加していきます。</div>
+      <h1 class="page-title">概算復旧見積 <small>// BUILD</small></h1>
+      <div class="page-sub">保険会社へ提出する概算復旧見積を作成する機能です。被害部屋ごとにセクションを作成し、単価表から品目を追加して見積を作成します。基本的に掛け率は1.0のままで、業者見積の方が高くなる際は微調整して仕上げてください。<br>保険会社の認定後は、査定表の内容に沿って工事項目・数量・金額を調整し、認定内容に合わせて工事を行ってください。</div>
     </div>
   </div>
 
@@ -1187,7 +1197,7 @@ function loadInitialState() {
   State.A.project = { title:'', client:'', honorific:'御中', date: todayISO(), period:'', overhead: 0.15, tax:0.10, roundMode:'auto', notes:'', logo:'', validUntil: endOfNextMonthISO(todayISO()), staff:'' };
   State.A.rows = [];
   State.A.globalMult = 1.20;
-  State.A.importMeta = null;
+  State.A.importMeta = []; // 取込ファイルの履歴 [{id, source, filename, count}, ...]
   State.A.importedCostTotal = null;
   State.B.project = { title:'', client:'', honorific:'御中', date: todayISO(), period:'', overhead:0.15, tax:0.10, roundMode:'auto', validUntil: endOfNextMonthISO(todayISO()), staff:'', notes:'' };
   State.B.sections = [];
@@ -1719,6 +1729,7 @@ const UI = {
     this.bindA_ProjectFields();
     this.A_render();
     this.bindA_Dropzone();
+    this.bindA_AddFilesInput();
     this.bindA_Multiplier();
     this.B_init();
     this.switchTab('A');
@@ -1770,7 +1781,7 @@ const UI = {
         project: { ...State.A.project },
         rows: State.A.rows.map(r => ({ ...r })),
         globalMult: State.A.globalMult,
-        importMeta: State.A.importMeta ? { ...State.A.importMeta } : null,
+        importMeta: Array.isArray(State.A.importMeta) ? State.A.importMeta.map(m => ({ ...m })) : [],
         importedCostTotal: State.A.importedCostTotal,
       },
       B: {
@@ -1878,11 +1889,20 @@ const UI = {
           State.A.project = { ...State.A.project, ...(snapshot.A.project || {}) };
           State.A.rows = Array.isArray(snapshot.A.rows) ? snapshot.A.rows : [];
           State.A.globalMult = snapshot.A.globalMult || 1.20;
-          State.A.importMeta = snapshot.A.importMeta || null;
+          // importMeta: 旧形式（単一オブジェクト）・新形式（配列）の両方に対応
+          const rawMeta = snapshot.A.importMeta;
+          if (Array.isArray(rawMeta)) {
+            State.A.importMeta = rawMeta;
+          } else if (rawMeta && typeof rawMeta === 'object') {
+            State.A.importMeta = [rawMeta];
+          } else {
+            State.A.importMeta = [];
+          }
           // 取り込み時の固定原価。旧JSONに無ければ、業者取込由来のときだけ現明細から復元
+          const hasFileImport = State.A.importMeta.some(m => ['pdf', 'xlsx', 'xls', 'csv'].includes(m.source));
           if (snapshot.A.importedCostTotal != null) {
             State.A.importedCostTotal = snapshot.A.importedCostTotal;
-          } else if (State.A.importMeta && (State.A.importMeta.source === 'pdf' || State.A.importMeta.source === 'xlsx' || State.A.importMeta.source === 'xls' || State.A.importMeta.source === 'csv')) {
+          } else if (hasFileImport) {
             State.A.importedCostTotal = State.A.rows.reduce((s, r) => s + Calc.rowCost(r), 0);
           } else {
             State.A.importedCostTotal = null;
@@ -2943,7 +2963,9 @@ const UI = {
     const input = document.getElementById('A-file');
     dz.addEventListener('click', () => input.click());
     input.addEventListener('change', e => {
-      const f = e.target.files[0]; if (f) this.A_handleFile(f);
+      const files = Array.from(e.target.files || []);
+      if (files.length) this.A_handleFiles(files);
+      e.target.value = '';
     });
     ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => {
       e.preventDefault(); e.stopPropagation(); dz.classList.add('drag');
@@ -2952,8 +2974,39 @@ const UI = {
       e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag');
     }));
     dz.addEventListener('drop', e => {
-      const f = e.dataTransfer.files[0]; if (f) this.A_handleFile(f);
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length) this.A_handleFiles(files);
     });
+  },
+
+  // 明細取込後も追加でファイルを取り込めるようにするための入力欄・ドロップ領域
+  bindA_AddFilesInput() {
+    const input = document.getElementById('A-file-add');
+    if (input) {
+      input.addEventListener('change', e => {
+        const files = Array.from(e.target.files || []);
+        if (files.length) this.A_handleFiles(files);
+        e.target.value = '';
+      });
+    }
+    const bar = document.getElementById('A-import-files-bar');
+    if (bar) {
+      ['dragenter', 'dragover'].forEach(ev => bar.addEventListener(ev, e => {
+        e.preventDefault(); e.stopPropagation(); bar.classList.add('drag');
+      }));
+      ['dragleave', 'drop'].forEach(ev => bar.addEventListener(ev, e => {
+        e.preventDefault(); e.stopPropagation(); bar.classList.remove('drag');
+      }));
+      bar.addEventListener('drop', e => {
+        const files = Array.from(e.dataTransfer.files || []);
+        if (files.length) this.A_handleFiles(files);
+      });
+    }
+  },
+
+  A_triggerAddFiles() {
+    const input = document.getElementById('A-file-add');
+    if (input) input.click();
   },
 
   bindA_Multiplier() {
@@ -2982,65 +3035,131 @@ const UI = {
     showToast(`全行に ×${m.toFixed(2)} を適用しました`);
   },
 
-  async A_handleFile(file) {
+  // 複数ファイルを順番に取り込む（最初の取込・追加取込の両方で共通利用）
+  async A_handleFiles(files) {
+    if (!files || !files.length) return;
     const status = document.getElementById('A-import-status');
     status.style.display = 'block';
     status.className = 'import-status';
-    status.textContent = `▶ ライブラリ準備中… ${file.name}`;
+    status.textContent = `▶ ライブラリ準備中…`;
 
-    // Wait for libraries to be ready (pdfjsLib, XLSX) before reading the file
+    // Wait for libraries to be ready (pdfjsLib, XLSX) before reading any file
     if (window.__libsReady) {
       try { await window.__libsReady; } catch (e) { /* ignore */ }
     }
 
-    const ext = (file.name.split('.').pop() || '').toLowerCase();
-
-    // Library availability check by file type
-    if (ext === 'pdf' && typeof window.pdfjsLib === 'undefined') {
-      status.className = 'import-status err';
-      status.textContent = `✕ PDFライブラリが読み込めませんでした。ネット接続を確認するか、libs/ フォルダの pdf.min.js を配置してください。`;
-      return;
-    }
-    if ((ext === 'xlsx' || ext === 'xls' || ext === 'csv') && typeof window.XLSX === 'undefined') {
-      status.className = 'import-status err';
-      status.textContent = `✕ Excelライブラリが読み込めませんでした。ネット接続を確認するか、libs/ フォルダの xlsx.full.min.js を配置してください。`;
-      return;
+    const results = [];
+    for (const file of files) {
+      status.className = 'import-status';
+      status.textContent = `▶ 取込中… ${file.name}`;
+      const res = await this.A_importOneFile(file);
+      results.push({ filename: file.name, ...res });
     }
 
-    status.textContent = `▶ 取込中… ${file.name}`;
-    try {
-      let items = [];
-      if (ext === 'pdf') {
-        items = await PDFExtract.extract(file);
-        State.A.importMeta = { source: 'pdf', filename: file.name };
-      } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
-        items = await SheetExtract.extract(file);
-        State.A.importMeta = { source: ext, filename: file.name };
-      } else {
-        throw new Error(`未対応の形式: .${ext}`);
-      }
-      if (!items.length) {
-        status.className = 'import-status err';
-        status.innerHTML = `⚠ 明細を自動抽出できませんでした（業者見積のレイアウトによっては難しい場合があります）。<br><br>
-          <button class="btn primary" onclick="UI.A_startBlank()">↓ 手入力に切り替えて進む</button>`;
-        return;
-      }
-      State.A.rows = items;
-      // 取り込み時点の原価合計を固定（以後の数量・原価編集では変動しない）
-      State.A.importedCostTotal = Calc.A_liveCost();
-      this.markDirty();
-      status.className = 'import-status ok';
-      status.textContent = `✓ ${items.length}行を抽出しました — ${file.name}`;
+    this.markDirty();
+    const okList = results.filter(r => r.ok);
+    const ngList = results.filter(r => !r.ok);
+
+    if (okList.length) {
       document.getElementById('A-build-zone').style.display = 'block';
       document.getElementById('A-import-zone').style.display = 'none';
-      this.A_render();
-    } catch (err) {
-      console.error('Import failed:', err);
+    }
+
+    if (okList.length && !ngList.length) {
+      status.className = 'import-status ok';
+      if (okList.length === 1) {
+        status.textContent = `✓ ${okList[0].count}行を抽出しました — ${okList[0].filename}`;
+      } else {
+        const total = okList.reduce((s, r) => s + r.count, 0);
+        status.textContent = `✓ ${okList.length}件のファイルから合計${total}行を抽出しました`;
+      }
+    } else if (okList.length && ngList.length) {
+      status.className = 'import-status warn';
+      status.innerHTML = `△ ${okList.length}件成功 / ${ngList.length}件失敗（${ngList.map(r => `${esc(r.filename)}: ${esc(r.message)}`).join('、')}）`;
+    } else {
       status.className = 'import-status err';
-      const msg = err && err.message ? err.message : String(err);
-      status.innerHTML = `✕ 取込に失敗しました: ${esc(msg)}<br><br>
+      status.innerHTML = `✕ 取込に失敗しました（${ngList.map(r => `${esc(r.filename)}: ${esc(r.message)}`).join(' / ')}）<br><br>
         <button class="btn primary" onclick="UI.A_startBlank()">↓ 手入力に切り替えて進む</button>`;
     }
+    this.A_render();
+  },
+
+  // 1ファイル分の取込処理。成功可否をオブジェクトで返す（1件失敗しても他のファイルの取込は継続する）
+  async A_importOneFile(file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+
+    if (ext === 'pdf' && typeof window.pdfjsLib === 'undefined') {
+      return { ok: false, message: 'PDFライブラリが読み込めませんでした。ネット接続または libs/pdf.min.js を確認してください。' };
+    }
+    if ((ext === 'xlsx' || ext === 'xls' || ext === 'csv') && typeof window.XLSX === 'undefined') {
+      return { ok: false, message: 'Excelライブラリが読み込めませんでした。ネット接続または libs/xlsx.full.min.js を確認してください。' };
+    }
+
+    let items = [];
+    let source;
+    try {
+      if (ext === 'pdf') {
+        items = await PDFExtract.extract(file);
+        source = 'pdf';
+      } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+        items = await SheetExtract.extract(file);
+        source = ext;
+      } else {
+        return { ok: false, message: `未対応の形式: .${ext}` };
+      }
+    } catch (err) {
+      console.error('Import failed:', err);
+      return { ok: false, message: err && err.message ? err.message : String(err) };
+    }
+
+    if (!items.length) {
+      return { ok: false, message: '明細を自動抽出できませんでした（業者見積のレイアウトによっては難しい場合があります）' };
+    }
+
+    const batchId = uid();
+    // 取込順に関わらず、各ファイルとも「見出し行を追加 → そのファイルの明細を追加」で統一する
+    State.A.rows.push({
+      id: uid(), kind: 'heading',
+      name: file.name, spec: '', qty: '', unit: '',
+      costPrice: '', mult: '', manualSell: '', included: true, note: '',
+      sourceFileId: batchId,
+    });
+    items.forEach(it => { it.sourceFileId = batchId; });
+    State.A.rows.push(...items);
+    State.A.importMeta.push({ id: batchId, source, filename: file.name, count: items.length });
+    // 取り込み時点の原価合計を固定（以後の数量・原価編集では変動しない）
+    State.A.importedCostTotal = Calc.A_liveCost();
+
+    return { ok: true, count: items.length };
+  },
+
+  // 取込ファイル一覧バーの描画（チップ表示＋追加取込ボタン）
+  A_renderFileList() {
+    const bar = document.getElementById('A-import-files-bar');
+    if (!bar) return;
+    const batches = State.A.importMeta || [];
+    const chips = batches.map((m, idx) => `
+      <span class="file-chip" title="${escAttr(m.filename)}">
+        <span class="mono xs muted">${idx + 1}</span> ${esc(m.filename)} <span class="muted xs">（${m.count}行）</span>
+        <span class="del" title="このファイル由来の明細を削除" onclick="UI.A_removeFileBatch('${m.id}')">×</span>
+      </span>`).join('');
+    bar.innerHTML = `
+      ${chips || '<span class="muted xs">取込ファイルなし（手入力のみ）</span>'}
+      <button class="btn xs add-file-btn" onclick="UI.A_triggerAddFiles()">＋ 業者見積を追加取込</button>
+    `;
+  },
+
+  // 特定ファイル由来の明細（自動挿入した見出し行を含む）をまとめて削除
+  A_removeFileBatch(batchId) {
+    const meta = (State.A.importMeta || []).find(m => m.id === batchId);
+    const label = meta ? meta.filename : 'このファイル';
+    if (!confirm(`「${label}」から取り込んだ明細をすべて削除しますか？`)) return;
+    State.A.rows = State.A.rows.filter(r => r.sourceFileId !== batchId);
+    State.A.importMeta = (State.A.importMeta || []).filter(m => m.id !== batchId);
+    State.A.importedCostTotal = Calc.A_liveCost();
+    this.markDirty();
+    this.A_render();
+    showToast(`「${label}」由来の明細を削除しました`);
   },
 
   A_resetImport() {
@@ -3048,7 +3167,7 @@ const UI = {
                  || (State.A.project.title || '').trim() !== ''
                  || (State.A.project.client || '').trim() !== '';
     if (hasData && !confirm('編集中の内容は保存されません。取込画面に戻ってもよろしいですか？\n\n（必要なら先に「💾 一時保存」してください）')) return;
-    State.A.rows = []; State.A.importMeta = null; State.A.importedCostTotal = null;
+    State.A.rows = []; State.A.importMeta = []; State.A.importedCostTotal = null;
     State.A.project = { ...State.A.project, title:'', client:'', period:'', staff:'', notes:'' };
     document.getElementById('A-build-zone').style.display = 'none';
     document.getElementById('A-import-zone').style.display = 'block';
@@ -3056,6 +3175,8 @@ const UI = {
     if (status) status.style.display = 'none';
     const fileInput = document.getElementById('A-file');
     if (fileInput) fileInput.value = '';
+    const fileAddInput = document.getElementById('A-file-add');
+    if (fileAddInput) fileAddInput.value = '';
     // Sync DOM project fields to empty
     const sync = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
     sync('A-proj-title', '');
@@ -3078,7 +3199,7 @@ const UI = {
       name: '', spec: '', qty: 1, unit: '式',
       costPrice: 0, mult: '', manualSell: '', included: true, note: '',
     }];
-    State.A.importMeta = { source: 'blank', filename: '（手入力）' };
+    State.A.importMeta = [];
     State.A.importedCostTotal = null;  // 手入力開始時は原価を編集に追従させる
     document.getElementById('A-build-zone').style.display = 'block';
     document.getElementById('A-import-zone').style.display = 'none';
@@ -3089,8 +3210,9 @@ const UI = {
 
   A_render() {
     const tb = document.getElementById('A-tbody');
+    this.A_renderFileList();
     if (!State.A.rows.length) {
-      tb.innerHTML = `<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--mute); font-size: 12px;">明細なし — 「＋ 行を追加」で手動入力できます</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="10" style="padding: 24px; text-align: center; color: var(--mute); font-size: 12px;">明細なし — 「＋ 明細行を追加」で手動入力できます</td></tr>`;
       this.A_refreshTotals();
       return;
     }
@@ -3187,12 +3309,17 @@ const UI = {
       </tr>`;
   },
 
-  // Inline row actions: insert above / insert below / delete
+  // Inline row actions: insert above / insert below / convert kind / delete
   A_rowActionButtons(i) {
+    const r = State.A.rows[i];
+    const isHeading = r && r.kind === 'heading';
+    const toggleLabel = isHeading ? '明細行にする' : '見出し行にする';
+    const toggleIcon = isHeading ? '§→#' : '#→§';
     return `
       <div class="row-actions-wrap">
         <button class="row-act-btn" title="この行の上に追加" onclick="UI.A_insertRow(${i}, 'above')">↑＋</button>
         <button class="row-act-btn" title="この行の下に追加" onclick="UI.A_insertRow(${i}, 'below')">↓＋</button>
+        <button class="row-act-btn kind-toggle" title="${toggleLabel}" onclick="UI.A_toggleRowKind(${i})">${toggleIcon}</button>
         <button class="row-act-btn del" title="この行を削除" onclick="UI.A_removeRow(${i})">×</button>
       </div>`;
   },
@@ -3268,6 +3395,31 @@ const UI = {
       name: '', spec: '', qty: 1, unit: '式',
       costPrice: 0, mult: '', manualSell: '', included: true, note: '',
     });
+    this.markDirty(); this.A_render();
+  },
+
+  // 金額を持たない見出し行（区切り・説明用）を追加
+  A_addHeadingRow() {
+    State.A.rows.push({
+      id: uid(), kind: 'heading',
+      name: '', spec: '', qty: '', unit: '',
+      costPrice: '', mult: '', manualSell: '', included: true, note: '',
+    });
+    this.markDirty(); this.A_render();
+  },
+
+  // 明細行 ⇔ 見出し行 を相互に変換する
+  A_toggleRowKind(i) {
+    const r = State.A.rows[i]; if (!r) return;
+    if (r.kind === 'heading') {
+      r.kind = 'detail';
+      r.qty = r.qty === '' || r.qty == null ? 1 : r.qty;
+      r.unit = r.unit || '式';
+      r.costPrice = r.costPrice === '' || r.costPrice == null ? 0 : r.costPrice;
+    } else {
+      r.kind = 'heading';
+      r.qty = ''; r.unit = ''; r.costPrice = ''; r.mult = ''; r.manualSell = '';
+    }
     this.markDirty(); this.A_render();
   },
 
